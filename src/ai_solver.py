@@ -5,8 +5,9 @@ Module: AI Solver
 Description:
     Implements the AI solver for the Minesweeper game.
     The medium difficulty uses basic Minesweeper deduction rules
-    to flag likely mines and uncover safe cells. If no logical
-    move can be found, the AI chooses a random covered cell.
+    to flag likely mines and uncover safe cells. The hard difficulty
+    adds the 1-2-1 pattern rule. If no logical move can be found,
+    the AI chooses a random covered cell.
 
 Inputs:
     Current Game and BoardManager state.
@@ -16,13 +17,16 @@ Outputs:
 
 External Sources:
     ChatGPT was used to assist with the structure and logic
-    of the Medium AI implementation.
+    of the Medium and Hard AI implementations.
 
-Author:
-    Atique Ahanaf Danial
+Authors:
+    Atique Ahanaf Danial - Medium AI
+    Ever Armenta - Hard AI
 
 Created:
     2026-10-05
+Modified:
+    2026-10-08
 
 Course:
     EECS 581 - Project 2 (Minesweeper)
@@ -158,3 +162,142 @@ class AISolver:
             self.game.uncover(row, col)
 
         return self.game.getStatus()
+
+    def _covered_neighbor_set(self, row, col):
+        """Return the covered neighboring coordinates around a cell."""
+        covered = set()
+
+        for neighbor_row, neighbor_col in self._neighbors(row, col):
+            neighbor = self.board.getCell(neighbor_row, neighbor_col)
+            if neighbor.isCovered():
+                covered.add((neighbor_row, neighbor_col))
+
+        return covered
+
+    def _has_flagged_neighbor(self, row, col):
+        """Return True if a cell has at least one flagged neighbor."""
+        for neighbor_row, neighbor_col in self._neighbors(row, col):
+            if self.board.getCell(neighbor_row, neighbor_col).isFlagged():
+                return True
+
+        return False
+
+    def _apply_121(self):
+        """Find and apply one horizontal or vertical 1-2-1 pattern."""
+
+        # Check horizontal 1-2-1 patterns.
+        for row in range(self.board.ROWS):
+            for col in range(self.board.COLS - 2):
+                first = self.board.getCell(row, col)
+                middle = self.board.getCell(row, col + 1)
+                last = self.board.getCell(row, col + 2)
+
+                if not (
+                    first.isUncovered()
+                    and middle.isUncovered()
+                    and last.isUncovered()
+                    and first.getAdjacentMines() == 1
+                    and middle.getAdjacentMines() == 2
+                    and last.getAdjacentMines() == 1
+                ):
+                    continue
+
+                # Existing flags change what the visible 1-2-1 means, so let
+                # the Medium rules handle those situations instead.
+                if (
+                    self._has_flagged_neighbor(row, col)
+                    or self._has_flagged_neighbor(row, col + 1)
+                    or self._has_flagged_neighbor(row, col + 2)
+                ):
+                    continue
+
+                # The three hidden cells can be directly above or below the
+                # revealed 1-2-1 cells.
+                for hidden_row in (row - 1, row + 1):
+                    if not (0 <= hidden_row < self.board.ROWS):
+                        continue
+
+                    left = (hidden_row, col)
+                    center = (hidden_row, col + 1)
+                    right = (hidden_row, col + 2)
+
+                    # Make sure these are the only covered neighbors involved
+                    # in the pattern before applying the deduction.
+                    if self._covered_neighbor_set(row, col) != {left, center}:
+                        continue
+                    if self._covered_neighbor_set(row, col + 1) != {
+                        left, center, right
+                    }:
+                        continue
+                    if self._covered_neighbor_set(row, col + 2) != {center, right}:
+                        continue
+
+                    self.game.toggleFlag(*left)
+                    self.game.toggleFlag(*right)
+                    self.game.uncover(*center)
+                    return True
+
+        # Check vertical 1-2-1 patterns.
+        for row in range(self.board.ROWS - 2):
+            for col in range(self.board.COLS):
+                first = self.board.getCell(row, col)
+                middle = self.board.getCell(row + 1, col)
+                last = self.board.getCell(row + 2, col)
+
+                if not (
+                    first.isUncovered()
+                    and middle.isUncovered()
+                    and last.isUncovered()
+                    and first.getAdjacentMines() == 1
+                    and middle.getAdjacentMines() == 2
+                    and last.getAdjacentMines() == 1
+                ):
+                    continue
+
+                if (
+                    self._has_flagged_neighbor(row, col)
+                    or self._has_flagged_neighbor(row + 1, col)
+                    or self._has_flagged_neighbor(row + 2, col)
+                ):
+                    continue
+
+                # The three hidden cells can be directly left or right of the
+                # revealed 1-2-1 cells.
+                for hidden_col in (col - 1, col + 1):
+                    if not (0 <= hidden_col < self.board.COLS):
+                        continue
+
+                    top = (row, hidden_col)
+                    center = (row + 1, hidden_col)
+                    bottom = (row + 2, hidden_col)
+
+                    if self._covered_neighbor_set(row, col) != {top, center}:
+                        continue
+                    if self._covered_neighbor_set(row + 1, col) != {
+                        top, center, bottom
+                    }:
+                        continue
+                    if self._covered_neighbor_set(row + 2, col) != {center, bottom}:
+                        continue
+
+                    self.game.toggleFlag(*top)
+                    self.game.toggleFlag(*bottom)
+                    self.game.uncover(*center)
+                    return True
+
+        return False
+
+    def hard_move(self):
+        """Make one move using Medium rules plus the 1-2-1 pattern."""
+
+        if self.game.getStatus() != GameStatus.IN_PROGRESS:
+            return self.game.getStatus()
+
+        # Hard mode first looks for its extra 1-2-1 deduction.
+        if self._apply_121():
+            return self.game.getStatus()
+
+        # If no 1-2-1 pattern applies, use the existing Medium rules,
+        # including their random fallback.
+        return self.medium_move()
+
