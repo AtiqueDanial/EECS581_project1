@@ -22,6 +22,7 @@ External Sources:
 Authors:
     Atique Ahanaf Danial - Medium AI
     Ever Armenta - Hard AI
+    Wen H. Tan - Easy AI
 
 Created:
     2026-10-05
@@ -63,6 +64,40 @@ class AISolver:
                     neighbors.append((new_row, new_col))
 
         return neighbors
+
+    def _covered_cells(self):
+        """Return every cell that is still covered and not flagged."""
+        covered = []
+
+        for row in range(self.board.ROWS):
+            for col in range(self.board.COLS):
+                # isCovered() is False for both flagged and uncovered cells.
+                if self.board.getCell(row, col).isCovered():
+                    covered.append((row, col))
+
+        return covered
+
+    def easy_move(self):
+        """
+        Make one move using the Easy AI rule.
+        
+        The AI uncovers one cell chosen at random from the cells that
+        are still covered. Flagged cells and already uncovered cells
+        are never chosen. The Easy AI uses no deduction and never
+        places or removes flags, so it can uncover a mine.
+        """
+
+        # Do not make another move if the game is already over.
+        if self.game.getStatus() != GameStatus.IN_PROGRESS:
+            return self.game.getStatus()
+
+        covered_cells = self._covered_cells
+
+        if covered_cells:
+            row, col = random.choice(covered_cells)
+            self.game.uncover(row, col)
+
+        return self.game.getStatus()
 
     def medium_move(self):
         """

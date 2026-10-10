@@ -4,6 +4,9 @@ Module: Game
 Description: Implements the overall gameplay rules of minesweeper, evaluates win/loss
 Author: Jana & Ellie
 Created: 2026-09-10
+Modified: 2026-10-09
+    Modifier: Wen H. Tan
+    Added MIN_MINES, MAX_MINES, and a hasStarted() method
 Course: EECS 581 - Project 1 (Minesweeper)
 """
 
@@ -14,6 +17,10 @@ from .mine_generator import MineGenerator
 from .number_calculator import calculateNumbers
 
 BOARD_SIZE = 10
+
+# Allowed range for the user-specified mine count (requirements: 10 to 20).
+MIN_MINES = 10
+MAX_MINES = 20
 
 
 class GameStatus(str, Enum):
@@ -90,6 +97,10 @@ class Game:
     def getStatus(self):
         '''returns the status: IN_PROGRESS, WON, LOST'''
         return self._status
+
+    def hasStarted(self):
+        '''returns True once the first cell has been uncovered and mines are placed'''
+        return self._mines_placed
 
     def remainingFlags(self):
         '''returns the number of remaining flags'''
