@@ -7,6 +7,7 @@ from unittest.mock import Mock
 from src.board import BoardManager
 from src.cell import Cell
 from src.game import Game, GameStatus
+from src.number_calculator import calculateNumbers
 
 
 class TestGame(unittest.TestCase):
@@ -143,6 +144,142 @@ class TestGame(unittest.TestCase):
 
         self.assertTrue(self.board.getCell(3, 3).isCovered())
         self.assertEqual(self.game.getStatus(), GameStatus.LOST)
+
+
+class TestGameWithMinesOnBoard(unittest.TestCase):
+    """Win, flood-fill, and flag-count cases on a board that has real mines."""
+
+    # Ten mines down the right-hand column (column J).
+    MINES = [(row, 9) for row in range(10)]
+
+    def setUp(self):
+        self.board = BoardManager()
+        self.game = Game(self.board, mine_count=len(self.MINES))
+        self.game._mine_generator = Mock()
+
+        for row, col in self.MINES:
+            self.board.getCell(row, col).setMine(True)
+
+        calculateNumbers(self.board)
+        self.game._mines_placed = True
+
+    def test_win_on_board_with_mines(self):
+        # Columns A-H are all zeros, so one click opens A-I (90 safe cells).
+        status = self.game.uncover(0, 0)
+
+        self.assertEqual(status, GameStatus.WON)
+        self.assertEqual(self.game._revealed_count, 90)
+
+        for row, col in self.MINES:
+            self.assertTrue(self.board.getCell(row, col).isCovered())
+
+    def test_win_does_not_require_flags(self):
+        self.game.uncover(0, 0)
+
+        self.assertEqual(self.game.getStatus(), GameStatus.WON)
+        self.assertEqual(self.game.remainingFlags(), 10)
+
+    def test_no_win_until_last_safe_cell_is_uncovered(self):
+        # Uncover the numbered column I one cell at a time; none cascade.
+        for row in range(9):
+            self.assertEqual(self.game.uncover(row, 8), GameStatus.IN_PROGRESS)
+
+        self.game.uncover(9, 8)
+        self.assertEqual(self.game.getStatus(), GameStatus.IN_PROGRESS)
+
+        self.assertEqual(self.game.uncover(0, 0), GameStatus.WON)
+
+    def test_numbered_cell_does_not_cascade(self):
+        self.assertEqual(self.board.getCell(4, 8).getAdjacentMines(), 3)
+
+        self.game.uncover(4, 8)
+
+        self.assertEqual(self.game._revealed_count, 1)
+        self.assertTrue(self.board.getCell(4, 7).isCovered())
+        self.assertTrue(self.board.getCell(3, 8).isCovered())
+
+    def test_flood_fill_stops_at_numbers_and_never_opens_mines(self):
+        self.game.uncover(5, 0)
+
+        for row in range(10):
+            # The numbered border (column I) is revealed...
+            self.assertTrue(self.board.getCell(row, 8).isUncovered())
+            self.assertGreater(self.board.getCell(row, 8).getAdjacentMines(), 0)
+            # ...but the mines behind it are not.
+            self.assertTrue(self.board.getCell(row, 9).isCovered())
+
+    def test_flood_fill_skips_flagged_cells(self):
+        self.game.toggleFlag(5, 5)
+
+        status = self.game.uncover(0, 0)
+
+        self.assertTrue(self.board.getCell(5, 5).isFlagged())
+        self.assertEqual(self.game._revealed_count, 89)
+        # A wrongly flagged safe cell blocks the win until it is uncovered.
+        self.assertEqual(status, GameStatus.IN_PROGRESS)
+
+        self.game.toggleFlag(5, 5)
+        self.assertEqual(self.game.uncover(5, 5), GameStatus.WON)
+
+    def test_uncovering_same_cell_twice_counts_once(self):
+        self.game.uncover(4, 8)
+        self.game.uncover(4, 8)
+
+        self.assertEqual(self.game._revealed_count, 1)
+
+    def test_losing_keeps_safe_cells_covered(self):
+        status = self.game.uncover(3, 9)
+
+        self.assertEqual(status, GameStatus.LOST)
+        for row, col in self.MINES:
+            self.assertTrue(self.board.getCell(row, col).isUncovered())
+        self.assertTrue(self.board.getCell(0, 0).isCovered())
+
+    def test_loss_reveals_flagged_mines_too(self):
+        self.game.toggleFlag(0, 9)
+
+        self.game.uncover(3, 9)
+
+        self.assertTrue(self.board.getCell(0, 9).isUncovered())
+
+    def test_no_actions_allowed_after_win(self):
+        self.game.uncover(0, 0)
+        self.assertEqual(self.game.getStatus(), GameStatus.WON)
+
+        self.game.toggleFlag(0, 9)
+        self.game.uncover(0, 9)
+
+        self.assertTrue(self.board.getCell(0, 9).isCovered())
+        self.assertEqual(self.game.getStatus(), GameStatus.WON)
+
+    def test_remaining_flags_is_mines_minus_flags(self):
+        for row in range(4):
+            self.game.toggleFlag(row, 9)
+
+        self.assertEqual(self.game.remainingFlags(), 6)
+
+    def test_more_flags_than_mines_gives_negative_remaining(self):
+        # Nothing stops the player from placing an 11th flag; the count is
+        # still "total mines minus placed flags".
+        for col in range(9):
+            self.game.toggleFlag(0, col)
+        self.game.toggleFlag(1, 0)
+        self.game.toggleFlag(1, 1)
+
+        self.assertEqual(self.game.remainingFlags(), -1)
+
+        self.game.toggleFlag(1, 1)
+        self.assertEqual(self.game.remainingFlags(), 0)
+
+    def test_has_started_only_after_first_uncover(self):
+        fresh = Game(BoardManager(), mine_count=10)
+        self.assertFalse(fresh.hasStarted())
+
+        fresh.toggleFlag(0, 0)
+        self.assertFalse(fresh.hasStarted())
+
+        fresh.uncover(5, 5)
+        self.assertTrue(fresh.hasStarted())
 
 
 if __name__ == "__main__":
