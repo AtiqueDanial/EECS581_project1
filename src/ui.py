@@ -29,11 +29,13 @@ try:
     from .game import Game, MIN_MINES, MAX_MINES
     from .input_handler import InputHandler
     from .ai_solver import AISolver
+    from .game_timer import GameTimer
 except ImportError:  # pragma: no cover
     from board import BoardManager
     from game import Game, MIN_MINES, MAX_MINES
     from input_handler import InputHandler
     from ai_solver import AISolver
+    from game_timer import GameTimer
 
 
 BOARD_ORIGIN = (200, 200)
@@ -50,6 +52,14 @@ MINE_PLUS_RECT = pygame.Rect(404, 62, 36, 36)
 AI_AUTO_EVENT = pygame.USEREVENT + 1
 AI_AUTO_DELAY_MS = 300
 
+# Fires a few times a second so the on-screen timer keeps counting
+# even when the player is not clicking.
+TIMER_TICK_EVENT = pygame.USEREVENT + 2
+TIMER_TICK_MS = 200
+
+# Game timer ("Time: 00:42"), right-aligned with the board's right edge.
+TIMER_TOPRIGHT = (600, 70)
+
 
 class MinesweeperUI:
     # Initialize the UI with the current board, game state, and input handling.
@@ -63,6 +73,9 @@ class MinesweeperUI:
             board_origin=BOARD_ORIGIN,
             board_size=self.board.ROWS,
         )
+
+        self.timer = GameTimer()
+        self._drawn_timer_text = None
 
         self.ai_solver = AISolver(self.game)
         self.ai_difficulty = "Medium"
@@ -188,6 +201,26 @@ class MinesweeperUI:
         text_rect = text.get_rect(center=button_rect.center)
         self.screen.blit(text, text_rect)
         return button_rect
+
+    # Keep the timer in step with the game: it starts on the first uncovered
+    # cell (by the player or the AI) and stops when the game is won or lost.
+    def sync_timer(self):
+        if self.game.getStatus() != "IN_PROGRESS":
+            self.timer.stop()
+        elif self.game.hasStarted():
+            self.timer.start()
+
+    # Draw the elapsed time for the current round.
+    def draw_timer(self):
+        self.sync_timer()
+
+        font = pygame.font.SysFont(None, 36)
+        text = self.timer.get_text()
+        surface = font.render(
+            f"Time: {text}", True, (255, 255, 255), self.bgcolor
+        )
+        self.screen.blit(surface, surface.get_rect(topright=TIMER_TOPRIGHT))
+        self._drawn_timer_text = text
 
     # The mine count can change before the first uncover or after the game ends,
     # but not in the middle of a round.
@@ -366,6 +399,7 @@ class MinesweeperUI:
     def render(self):
         self.draw_grid()
         self.draw_mine_selector()
+        self.draw_timer()
         self.draw_status()
         for row in range(self.board.ROWS):
             for col in range(self.board.COLS):
@@ -390,11 +424,21 @@ class MinesweeperUI:
         )
         self.ai_solver = AISolver(self.game)
         self.auto_running = False
+        self.timer.reset()
         pygame.time.set_timer(AI_AUTO_EVENT, 0)
         self.render()
 
     # Handle player input and AI controls.
     def handle_event(self, event):
+        # Timer tick: redraw only whe nth edisplayed second has changed.
+        if event.type == TIMER_TICK_EVENT:
+            self.sync_timer()
+
+            if self.timer.get_text() != self._drawn_timer_text:
+                self.render()
+
+            return
+
         # Auto Solve makes one AI move every timer tick.
         if event.type == AI_AUTO_EVENT:
             if self.auto_running and self.game.getStatus() == "IN_PROGRESS":
@@ -509,6 +553,7 @@ def main():
     game = Game(board, MINE_COUNT)
     ui = MinesweeperUI(screen, board, game)
     ui.render()
+    pygame.time.set_timer(TIMER_TICK_EVENT, TIMER_TICK_MS)
 
     running = True
     while running:
