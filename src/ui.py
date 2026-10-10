@@ -15,6 +15,7 @@ Author:
     Megan Svoren, GitHub Copilot
 Modified by:
     Ever Armenta - AI UI integration
+    Wen H. Tan - Added mine-count selector
 Created:
     9/14/26
 Modified:
@@ -25,12 +26,12 @@ from pathlib import Path
 
 try:
     from .board import BoardManager
-    from .game import Game
+    from .game import Game, MIN_MINES, MAX_MINES
     from .input_handler import InputHandler
     from .ai_solver import AISolver
 except ImportError:  # pragma: no cover
     from board import BoardManager
-    from game import Game
+    from game import Game, MIN_MINES, MAX_MINES
     from input_handler import InputHandler
     from ai_solver import AISolver
 
@@ -38,7 +39,13 @@ except ImportError:  # pragma: no cover
 BOARD_ORIGIN = (200, 200)
 CELL_SIZE = 40
 BOARD_SIZE = 10
-MINE_COUNT = 10
+MINE_COUNT = 10  # default; the player can change it with the selector
+
+# Mine-count selector ("Mines: [-] 10 [+]") drawn above the status text.
+MINE_LABEL_POS = (200, 70)
+MINE_MINUS_RECT = pygame.Rect(300, 62, 36, 36)
+MINE_VALUE_CENTER = (370, 80)
+MINE_PLUS_RECT = pygame.Rect(404, 62, 36, 36)
 
 AI_AUTO_EVENT = pygame.USEREVENT + 1
 AI_AUTO_DELAY_MS = 300
@@ -50,6 +57,7 @@ class MinesweeperUI:
         self.screen = screen
         self.board = board
         self.game = game
+        self.mine_count = max(MIN_MINES, min(MAX_MINES, game.mine_count))
         self.input_handler = InputHandler(
             cell_size=CELL_SIZE,
             board_origin=BOARD_ORIGIN,
@@ -181,6 +189,70 @@ class MinesweeperUI:
         self.screen.blit(text, text_rect)
         return button_rect
 
+    # The mine count can change before the first uncover or after the game ends,
+    # but not in the middle of a round.
+    def mine_selector_enabled(self):
+        return (
+            self.game.getStatus() != "IN_PROGRESS"
+            or not self.game.hasStarted()
+        )
+
+    # Set the mine count, clamped to the allowed 10-20 range.
+    # Returns True if the value changed.
+    def set_mine_count(self, count):
+        if not self.mine_selector_enabled():
+            return False
+
+        count = max(MIN_MINES, min(MAX_MINES, count))
+        if count == self.mine_count:
+            return False
+
+        self.mine_count = count
+
+        if self.game.getStatus() == "IN_PROGRESS":
+            # No cell has been uncovered yet, so rebuild the round with
+            # the new count. After a win or loss the finished board stays
+            # on screen and the new count applies to the next game.
+            self.reset_game()
+        else:
+            self.render()
+
+        return True
+
+    # Draw the mine-count selector and return its (minus, plus) buttons.
+    def draw_mine_selector(self):
+        font = pygame.font.SysFont(None, 36)
+        enabled = self.mine_selector_enabled()
+
+        label = font.render("Mines:", True, (255, 255, 255), self.bgcolor)
+        self.screen.blit(label, MINE_LABEL_POS)
+
+        value = font.render(
+            str(self.mine_count), True, (255, 255, 255), self.bgcolor
+        )
+        self.screen.blit(value, value.get_rect(center=MINE_VALUE_CENTER))
+
+        buttons = (
+            ("-", MINE_MINUS_RECT, self.mine_count > MIN_MINES),
+            ("+", MINE_PLUS_RECT, self.mine_count < MAX_MINES),
+        )
+
+        for symbol, rect, in_range in buttons:
+            active = enabled and in_range
+            fill = (70, 70, 70) if active else (50, 50, 50)
+            text_color = (255, 255, 255) if active else (150, 150, 150)
+
+            pygame.draw.rect(self.screen, fill, rect)
+            pygame.draw.rect(self.screen, (255, 255, 255), rect, 2)
+
+            symbol_surface = font.render(symbol, True, text_color)
+            self.screen.blit(
+                symbol_surface,
+                symbol_surface.get_rect(center=rect.center),
+            )
+
+        return MINE_MINUS_RECT, MINE_PLUS_RECT
+
     # Make one AI move using the selected difficulty.
     def run_ai_move(self):
         if self.game.getStatus() != "IN_PROGRESS":
@@ -293,6 +365,7 @@ class MinesweeperUI:
     # Repaint the entire screen from the current game and board state.
     def render(self):
         self.draw_grid()
+        self.draw_mine_selector()
         self.draw_status()
         for row in range(self.board.ROWS):
             for col in range(self.board.COLS):
@@ -309,7 +382,7 @@ class MinesweeperUI:
     # Create a fresh board and game instance for a new round.
     def reset_game(self):
         self.board = BoardManager()
-        self.game = Game(self.board, MINE_COUNT)
+        self.game = Game(self.board, self.mine_count)
         self.input_handler = InputHandler(
             cell_size=CELL_SIZE,
             board_origin=BOARD_ORIGIN,
@@ -336,6 +409,16 @@ class MinesweeperUI:
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN:
+            # Mine-count selector (left click only).
+            if getattr(event, "button", 1) == 1:
+                if MINE_MINUS_RECT.collidepoint(event.pos):
+                    self.set_mine_count(self.mine_count - 1)
+                    return
+
+                if MINE_PLUS_RECT.collidepoint(event.pos):
+                    self.set_mine_count(self.mine_count + 1)
+                    return
+
             if self.game.getStatus() == "LOST":
                 button_rect = self.draw_new_game_button()
 
@@ -440,4 +523,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
