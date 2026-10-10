@@ -4,10 +4,12 @@ Module: AI Solver
 
 Description:
     Implements the AI solver for the Minesweeper game.
-    The medium difficulty uses basic Minesweeper deduction rules
-    to flag likely mines and uncover safe cells. The hard difficulty
-    adds the 1-2-1 pattern rule. If no logical move can be found,
-    the AI chooses a random covered cell.
+    The easy difficulty uncovers cells randomly, avoiding flagged
+    or already uncovered cells. The medium difficulty uses basic
+    Minesweeper deduction rules to flag likely mines and uncover
+    safe cells. The hard difficulty adds the 1-2-1 pattern rule.
+    If no logical move can be found, the AI chooses a random
+    covered cell.
 
 Inputs:
     Current Game and BoardManager state.

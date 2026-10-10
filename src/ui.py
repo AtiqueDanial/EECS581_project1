@@ -174,9 +174,9 @@ class MinesweeperUI:
         self.screen.blit(digit_map[left_digit], (519, 120))
         self.screen.blit(digit_map[right_digit], (559, 120))
 
-    # Show a restart button only after the player loses the game.
+    # Show a restart button once the game is over (won or lost).
     def draw_new_game_button(self):
-        if self.game.getStatus() != "LOST":
+        if self.game.getStatus() == "IN_PROGRESS":
             return
 
         button_rect = pygame.Rect(300, 650, 200, 60)
