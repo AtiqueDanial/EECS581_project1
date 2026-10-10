@@ -91,7 +91,7 @@ class AISolver:
         if self.game.getStatus() != GameStatus.IN_PROGRESS:
             return self.game.getStatus()
 
-        covered_cells = self._covered_cells
+        covered_cells = self._covered_cells()
 
         if covered_cells:
             row, col = random.choice(covered_cells)
