@@ -29,13 +29,13 @@ try:
     from .game import Game, MIN_MINES, MAX_MINES
     from .input_handler import InputHandler
     from .ai_solver import AISolver
-    from .game_timer import GameTimer
+    from .game_timer import GameTimer, format_time
 except ImportError:  # pragma: no cover
     from board import BoardManager
     from game import Game, MIN_MINES, MAX_MINES
     from input_handler import InputHandler
     from ai_solver import AISolver
-    from game_timer import GameTimer
+    from game_timer import GameTimer, format_time
 
 
 BOARD_ORIGIN = (200, 200)
@@ -60,6 +60,8 @@ TIMER_TICK_MS = 200
 # Game timer ("Time: 00:42"), right-aligned with the board's right edge.
 TIMER_TOPRIGHT = (600, 70)
 
+# Session record ("Record - 00:42 (Easy)"), right-aligned above the timer.
+RECORD_TOPRIGHT = (600, 34)
 
 class MinesweeperUI:
     # Initialize the UI with the current board, game state, and input handling.
@@ -76,6 +78,13 @@ class MinesweeperUI:
 
         self.timer = GameTimer()
         self._drawn_timer_text = None
+
+        # Session record: the lowest winning time since the game was opened,
+        # and the AI difficulty that was selected when it was set. It is kept
+        # across New Game but not saved when the window closes.
+        self.record_seconds = None
+        self.record_difficulty = None
+        self.win_recorded = False   # has this round's win been checked?
 
         self.ai_solver = AISolver(self.game)
         self.ai_difficulty = "Medium"
@@ -207,8 +216,40 @@ class MinesweeperUI:
     def sync_timer(self):
         if self.game.getStatus() != "IN_PROGRESS":
             self.timer.stop()
+            self.record_win()
         elif self.game.hasStarted():
             self.timer.start()
+
+    # Check a finished round against the session record (lowest winning
+    # time since the game was opened). Runs once per round; losses don't count.
+    def record_win(self):
+        if self.win_recorded or self.game.getStatus() != "WON":
+            return
+
+        self.win_recorded = True
+        seconds = self.timer.get_elapsed_seconds()
+
+        if self.record_seconds is None or seconds < self.record_seconds:
+            self.record_seconds = seconds
+            self.record_difficulty = self.ai_difficulty
+
+    # Text for the record line, e.g. "Record - 00:42 (Easy)".
+    def get_record_text(self):
+        if self.record_seconds is None:
+            return "Record - --:--"
+
+        return (
+            f"Record - {format_time(self.record_seconds)}"
+            f" ({self.record_difficulty})"
+        )
+
+    # Draw the session record just above the timer.
+    def draw_record(self):
+        font = pygame.font.SysFont(None, 28)
+        surface = font.render (
+            self.get_record_text(), True, (255, 255, 255), self.bgcolor
+        )
+        self.screen.blit(surface, surface.get_rect(topright=RECORD_TOPRIGHT))
 
     # Draw the elapsed time for the current round.
     def draw_timer(self):
@@ -400,6 +441,7 @@ class MinesweeperUI:
         self.draw_grid()
         self.draw_mine_selector()
         self.draw_timer()
+        self.draw_record()
         self.draw_status()
         for row in range(self.board.ROWS):
             for col in range(self.board.COLS):
@@ -425,6 +467,7 @@ class MinesweeperUI:
         self.ai_solver = AISolver(self.game)
         self.auto_running = False
         self.timer.reset()
+        self.win_recorded = False
         pygame.time.set_timer(AI_AUTO_EVENT, 0)
         self.render()
 

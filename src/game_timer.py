@@ -27,6 +27,10 @@ import time
 # The display has two digits for minutes, so stop counting at 99:59.
 MAX_SECONDS = 99 * 60 + 59
 
+def format_time(seconds):
+    """Return a number of seconds as MM:SS."""
+    minutes, seconds = divmod(max(0, int(seconds)), 60)
+    return f"{minutes:02d}:{seconds:02d}"
 
 class GameTimer:
     """Stopwatch for one round of Minesweeper."""
